@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ title }}</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #0f0f1a; color: #eaeaea; margin: 0; padding: 20px; }
+        .header { text-align: center; padding: 40px 0; }
+        h1 { color: #00d4ff; font-size: 2.5em; margin-bottom: 10px; }
+        .subtitle { color: #888; font-size: 1.2em; }
+        .container { max-width: 900px; margin: 0 auto; }
+        .pipeline { background: #1a1a2e; border-radius: 12px; padding: 30px; margin: 20px 0; border: 1px solid #2a2a4a; }
+        .pipeline h2 { color: #00d4ff; border-bottom: 1px solid #2a2a4a; padding-bottom: 10px; }
+        .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-top: 20px; }
+        .tool-card { background: #16213e; border-radius: 8px; padding: 20px; border-left: 4px solid #00d4ff; }
+        .tool-card h3 { color: #00d4ff; margin-top: 0; }
+        .tool-card p { color: #bbb; line-height: 1.6; margin: 0; }
+        .flow { background: #1a1a2e; border-radius: 12px; padding: 30px; margin: 20px 0; border: 1px solid #2a2a4a; }
+        .flow h2 { color: #00d4ff; border-bottom: 1px solid #2a2a4a; padding-bottom: 10px; }
+        .flow-steps { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; margin-top: 20px; }
+        .step { background: #16213e; padding: 12px 20px; border-radius: 8px; font-weight: bold; color: #00d4ff; }
+        .arrow { color: #555; font-size: 1.5em; }
+        .footer { text-align: center; margin-top: 30px; color: #555; }
+        .version { background: #00d4ff; color: #0f0f1a; padding: 4px 12px; border-radius: 20px; font-size: 0.9em; font-weight: bold; display: inline-block; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{{ title }}</h1>
+            <p class="subtitle">{{ message }}</p>
+            <span class="version">Version 1.0</span>
+        </div>
+
+        <div class="flow">
+            <h2>CI/CD Pipeline Flow</h2>
+            <div class="flow-steps">
+                <div class="step">CodeCommit</div>
+                <span class="arrow">→</span>
+                <div class="step">CodeBuild</div>
+                <span class="arrow">→</span>
+                <div class="step">ECR</div>
+                <span class="arrow">→</span>
+                <div class="step">CodeDeploy</div>
+                <span class="arrow">→</span>
+                <div class="step">ECS Fargate</div>
+            </div>
+        </div>
+
+        <div class="pipeline">
+            <h2>AWS Tools Used</h2>
+            <div class="tool-grid">
+                <div class="tool-card">
+                    <h3>AWS CodeCommit</h3>
+                    <p>Managed Git repository hosting the application source code. Triggers the pipeline on every push to the main branch.</p>
+                </div>
+                <div class="tool-card">
+                    <h3>AWS CodeBuild</h3>
+                    <p>Fully managed build service that compiles the application, builds the Docker image, and pushes it to ECR.</p>
+                </div>
+                <div class="tool-card">
+                    <h3>Amazon ECR</h3>
+                    <p>Elastic Container Registry stores Docker images securely. Each build creates a new tagged image for deployment.</p>
+                </div>
+                <div class="tool-card">
+                    <h3>AWS CodeDeploy</h3>
+                    <p>Handles Blue/Green deployments to ECS. Routes traffic from the old version to the new version with zero downtime.</p>
+                </div>
+                <div class="tool-card">
+                    <h3>AWS CodePipeline</h3>
+                    <p>Orchestrates the entire CI/CD workflow — from source code change detection to production deployment.</p>
+                </div>
+                <div class="tool-card">
+                    <h3>Amazon ECS (Fargate)</h3>
+                    <p>Serverless container orchestration. Runs the application without managing servers. Scales automatically based on demand.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="pipeline">
+            <h2>Application Stack</h2>
+            <div class="tool-grid">
+                <div class="tool-card">
+                    <h3>Python + Flask</h3>
+                    <p>Lightweight web framework serving the application. Simple MVC architecture with Jinja2 templates.</p>
+                </div>
+                <div class="tool-card">
+                    <h3>Gunicorn</h3>
+                    <p>Production-grade WSGI HTTP server running the Flask application inside the container.</p>
+                </div>
+                <div class="tool-card">
+                    <h3>Docker</h3>
+                    <p>Containerizes the application for consistent deployment across all environments.</p>
+                </div>
+                <div class="tool-card">
+                    <h3>Application Load Balancer</h3>
+                    <p>Distributes incoming traffic across containers. Supports Blue/Green deployment with two target groups.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Built by Krisha Manoj | Fully automated AWS CI/CD Pipeline</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,37 @@
+version: 0.2
+
+env:
+  variables:
+    AWS_ACCOUNT_ID: "307946644949"
+    AWS_REGION: "us-west-2"
+    ECR_REPO: "python-flask-app"
+    CONTAINER_NAME: "python-flask-app"
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+      - IMAGE_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO
+      - IMAGE_TAG=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+
+  build:
+    commands:
+      - echo Building Docker image...
+      - docker build -t $IMAGE_URI:$IMAGE_TAG .
+      - docker tag $IMAGE_URI:$IMAGE_TAG $IMAGE_URI:latest
+
+  post_build:
+    commands:
+      - echo Pushing Docker image...
+      - docker push $IMAGE_URI:$IMAGE_TAG
+      - docker push $IMAGE_URI:latest
+      - echo Preparing deployment artifacts...
+      - sed -i "s|IMAGE_PLACEHOLDER|$IMAGE_URI:$IMAGE_TAG|g" taskdef.json
+      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME $IMAGE_URI:$IMAGE_TAG > imagedefinitions.json
+
+artifacts:
+  files:
+    - appspec.yml
+    - taskdef.json
+    - imagedefinitions.json
