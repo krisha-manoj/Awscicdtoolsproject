@@ -1,0 +1,619 @@
+AWS CI/CD Pipeline — Complete Step-by-Step Guide
+
+## Project: Python Flask App deployed with CodeCommit → CodeBuild → ECR → CodePipeline → ECS (Fargate)
+
+---
+
+## Pre-requisites
+
+- AWS CLI installed and configured on an EC2 instance
+- Docker installed on EC2
+- A VPC with at least 2 public subnets in different AZs
+- Your public IP (run `curl -s ifconfig.me`)
+
+---
+
+## Phase 1: Create AWS Resources (CLI)
+
+### Step 1: Create ECR Repository
+
+```bash
+aws ecr create-repository --repository-name python-flask-app --region us-west-2
+```
+
+### Step 2: Create CodeCommit Repository
+
+```bash
+aws codecommit create-repository --repository-name python-flask-app --region us-west-2
+```
+
+### Step 3: Create CloudWatch Log Group
+
+```bash
+aws logs create-log-group --log-group-name /ecs/python-flask-app --region us-west-2
+```
+
+---
+
+## Phase 2: Create Application Files
+
+```bash
+mkdir ~/python-flask-app && cd ~/python-flask-app
+```
+
+### app.py
+
+```bash
+cat > app.py << 'EOF'
+from flask import Flask, render_template
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return render_template('index.html', title='AWS CI/CD Pipeline Project', message='End-to-end CI/CD pipeline built entirely using AWS native tools — CodeCommit, CodeBuild, CodeDeploy, CodePipeline, ECR, and ECS Fargate.')
+
+@app.route('/health')
+def health():
+    return {'status': 'healthy'}, 200
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
+EOF
+```
+
+### requirements.txt
+
+```bash
+cat > requirements.txt << 'EOF'
+flask==3.0.0
+gunicorn==21.2.0
+EOF
+```
+
+### templates/index.html
+
+```bash
+mkdir -p templates
+cat > templates/index.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ title }}</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #0f0f1a; color: #eaeaea; margin: 0; padding: 20px; }
+        .header { text-align: center; padding: 40px 0; }
+        h1 { color: #00d4ff; font-size: 2.5em; margin-bottom: 10px; }
+        .subtitle { color: #888; font-size: 1.2em; }
+        .container { max-width: 900px; margin: 0 auto; }
+        .pipeline { background: #1a1a2e; border-radius: 12px; padding: 30px; margin: 20px 0; border: 1px solid #2a2a4a; }
+        .pipeline h2 { color: #00d4ff; border-bottom: 1px solid #2a2a4a; padding-bottom: 10px; }
+        .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-top: 20px; }
+        .tool-card { background: #16213e; border-radius: 8px; padding: 20px; border-left: 4px solid #00d4ff; }
+        .tool-card h3 { color: #00d4ff; margin-top: 0; }
+        .tool-card p { color: #bbb; line-height: 1.6; margin: 0; }
+        .flow { background: #1a1a2e; border-radius: 12px; padding: 30px; margin: 20px 0; border: 1px solid #2a2a4a; }
+        .flow h2 { color: #00d4ff; border-bottom: 1px solid #2a2a4a; padding-bottom: 10px; }
+        .flow-steps { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; margin-top: 20px; }
+        .step { background: #16213e; padding: 12px 20px; border-radius: 8px; font-weight: bold; color: #00d4ff; }
+        .arrow { color: #555; font-size: 1.5em; }
+        .footer { text-align: center; margin-top: 30px; color: #555; }
+        .version { background: #00d4ff; color: #0f0f1a; padding: 4px 12px; border-radius: 20px; font-size: 0.9em; font-weight: bold; display: inline-block; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{{ title }}</h1>
+            <p class="subtitle">{{ message }}</p>
+            <span class="version">Version 1.0</span>
+        </div>
+        <div class="flow">
+            <h2>CI/CD Pipeline Flow</h2>
+            <div class="flow-steps">
+                <div class="step">CodeCommit</div>
+                <span class="arrow">→</span>
+                <div class="step">CodeBuild</div>
+                <span class="arrow">→</span>
+                <div class="step">ECR</div>
+                <span class="arrow">→</span>
+                <div class="step">CodePipeline</div>
+                <span class="arrow">→</span>
+                <div class="step">ECS Fargate</div>
+            </div>
+        </div>
+        <div class="pipeline">
+            <h2>AWS Tools Used</h2>
+            <div class="tool-grid">
+                <div class="tool-card">
+                    <h3>AWS CodeCommit</h3>
+                    <p>Managed Git repository hosting the application source code. Triggers the pipeline on every push to the main branch.</p>
+                </div>
+                <div class="tool-card">
+                    <h3>AWS CodeBuild</h3>
+                    <p>Fully managed build service that builds the Docker image and pushes it to ECR.</p>
+                </div>
+                <div class="tool-card">
+                    <h3>Amazon ECR</h3>
+                    <p>Elastic Container Registry stores Docker images securely. Each build creates a new tagged image for deployment.</p>
+                </div>
+                <div class="tool-card">
+                    <h3>AWS CodePipeline</h3>
+                    <p>Orchestrates the entire CI/CD workflow — from source code change detection to production deployment.</p>
+                </div>
+                <div class="tool-card">
+                    <h3>Amazon ECS (Fargate)</h3>
+                    <p>Serverless container orchestration. Runs the application without managing servers. Scales automatically based on demand.</p>
+                </div>
+                <div class="tool-card">
+                    <h3>Application Load Balancer</h3>
+                    <p>Distributes incoming traffic across containers with HTTPS termination.</p>
+                </div>
+            </div>
+        </div>
+        <div class="footer">
+            <p>Built by Krisha Manoj | Fully automated AWS CI/CD Pipeline</p>
+        </div>
+    </div>
+</body>
+</html>
+EOF
+```
+
+### Dockerfile
+
+```bash
+cat > Dockerfile << 'EOF'
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+EXPOSE 8080
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]
+EOF
+```
+
+### buildspec.yml
+
+```bash
+cat > buildspec.yml << 'EOF'
+version: 0.2
+
+env:
+  variables:
+    AWS_ACCOUNT_ID: "307946644949"
+    AWS_REGION: "us-west-2"
+    ECR_REPO: "python-flask-app"
+    CONTAINER_NAME: "python-flask-app"
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+      - IMAGE_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO
+      - IMAGE_TAG=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+
+  build:
+    commands:
+      - echo Building Docker image...
+      - docker build -t $IMAGE_URI:$IMAGE_TAG .
+      - docker tag $IMAGE_URI:$IMAGE_TAG $IMAGE_URI:latest
+
+  post_build:
+    commands:
+      - echo Pushing Docker image...
+      - docker push $IMAGE_URI:$IMAGE_TAG
+      - docker push $IMAGE_URI:latest
+      - echo Preparing deployment artifacts...
+      - printf '[{"name":"%s","imageUri":"%s"}]' $CONTAINER_NAME $IMAGE_URI:$IMAGE_TAG > imagedefinitions.json
+
+artifacts:
+  files:
+    - imagedefinitions.json
+EOF
+```
+
+### taskdef.json
+
+```bash
+cat > taskdef.json << 'EOF'
+{
+  "family": "python-flask-app",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::307946644949:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "python-flask-app",
+      "image": "307946644949.dkr.ecr.us-west-2.amazonaws.com/python-flask-app:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/python-flask-app",
+          "awslogs-region": "us-west-2",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
+EOF
+```
+
+---
+
+## Phase 3: Create IAM Roles (CLI)
+
+```bash
+cd ~
+
+# ECS Task Execution Role
+cat > ecs-trust.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": { "Service": "ecs-tasks.amazonaws.com" },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+
+aws iam create-role --role-name ecsTaskExecutionRole \
+  --assume-role-policy-document file://ecs-trust.json
+aws iam attach-role-policy --role-name ecsTaskExecutionRole \
+  --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+# CodeBuild Role
+cat > codebuild-trust.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": { "Service": "codebuild.amazonaws.com" },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+
+aws iam create-role --role-name CodeBuildServiceRole \
+  --assume-role-policy-document file://codebuild-trust.json
+aws iam attach-role-policy --role-name CodeBuildServiceRole \
+  --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
+aws iam attach-role-policy --role-name CodeBuildServiceRole \
+  --policy-arn arn:aws:iam::aws:policy/AWSCodeCommitReadOnly
+aws iam attach-role-policy --role-name CodeBuildServiceRole \
+  --policy-arn arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+aws iam attach-role-policy --role-name CodeBuildServiceRole \
+  --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
+
+# ECS CodeDeploy Role (for Blue/Green service)
+cat > ecs-codedeploy-trust.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": [
+          "codedeploy.amazonaws.com",
+          "ecs.amazonaws.com"
+        ]
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+
+aws iam create-role --role-name ecsCodeDeployRole \
+  --assume-role-policy-document file://ecs-codedeploy-trust.json
+aws iam attach-role-policy --role-name ecsCodeDeployRole \
+  --policy-arn arn:aws:iam::aws:policy/AWSCodeDeployRoleForECS
+```
+
+---
+
+## Phase 4: Push Code to CodeCommit
+
+```bash
+cd ~/python-flask-app
+git init
+git add .
+git commit -m "Initial commit - Flask app with AWS CI/CD"
+
+git config --global credential.helper '!aws codecommit credential-helper $@'
+git config --global credential.UseHttpPath true
+
+git remote add origin https://git-codecommit.us-west-2.amazonaws.com/v1/repos/python-flask-app
+git branch -M main
+git push -u origin main
+```
+
+---
+
+## Phase 5: Build and Push Initial Docker Image to ECR
+
+```bash
+cd ~/python-flask-app
+
+aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 307946644949.dkr.ecr.us-west-2.amazonaws.com
+
+docker build -t 307946644949.dkr.ecr.us-west-2.amazonaws.com/python-flask-app:initial .
+docker push 307946644949.dkr.ecr.us-west-2.amazonaws.com/python-flask-app:initial
+```
+
+---
+
+## Phase 6: Register Task Definition
+
+```bash
+aws ecs register-task-definition --cli-input-json file://taskdef.json --region us-west-2
+```
+
+---
+
+## Phase 7: Create Infrastructure (Console)
+
+### Step 1: Create Security Groups
+
+#### ALB Security Group (`flask-alb-sg`)
+
+| Direction | Type | Port | Source |
+|-----------|------|------|--------|
+| Inbound | HTTPS | 443 | `<YOUR_IP>/32` |
+| Inbound | Custom TCP | 8443 | `<YOUR_IP>/32` |
+| Outbound | All traffic | All | 0.0.0.0/0 |
+
+#### ECS Task Security Group (`flask-ecs-task-sg`)
+
+| Direction | Type | Port | Source |
+|-----------|------|------|--------|
+| Inbound | Custom TCP | 8080 | `flask-alb-sg` (select SG) |
+| Outbound | All traffic | All | 0.0.0.0/0 |
+
+---
+
+### Step 2: Create Target Groups
+
+#### Production (`flask-tg-blue`)
+
+| Setting | Value |
+|---------|-------|
+| Target type | IP |
+| Protocol | **HTTP** |
+| Port | **8080** |
+| VPC | Your VPC |
+| Health check protocol | HTTP |
+| Health check path | `/health` |
+| Health check port | 8080 |
+
+#### Test (`flask-tg-green`)
+
+| Setting | Value |
+|---------|-------|
+| Target type | IP |
+| Protocol | **HTTP** |
+| Port | **8080** |
+| VPC | Your VPC |
+| Health check protocol | HTTP |
+| Health check path | `/health` |
+| Health check port | 8080 |
+
+> ⚠️ **Critical:** Protocol MUST be HTTP. Containers don't have TLS — ALB handles TLS termination.
+
+---
+
+### Step 3: Import SSL Certificate
+
+```bash
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout server.key -out server.crt \
+  -subj "/CN=flask-app.example.com/O=krisha"
+
+aws acm import-certificate --region us-west-2 \
+  --certificate fileb://server.crt \
+  --private-key fileb://server.key
+```
+
+> Use FQDN format (e.g. `flask-app.example.com`) — ALB rejects certs without proper domain.
+
+---
+
+### Step 4: Create ALB
+
+| Setting | Value |
+|---------|-------|
+| Name | `flask-app-alb` |
+| Scheme | Internet-facing |
+| Subnets | 2 public subnets (different AZs) |
+| Security group | `flask-alb-sg` |
+
+#### Listeners
+
+| Listener | Protocol | Port | Action | Certificate |
+|----------|----------|------|--------|-------------|
+| 1 | HTTPS | 443 | Forward to `flask-tg-blue` | ACM cert |
+| 2 | HTTPS | 8443 | Forward to `flask-tg-green` | ACM cert |
+
+---
+
+### Step 5: Create ECS Cluster
+
+| Setting | Value |
+|---------|-------|
+| Name | `python-flask-cluster` |
+| Infrastructure | AWS Fargate |
+
+---
+
+### Step 6: Create ECS Service
+
+| Setting | Value |
+|---------|-------|
+| Launch type | Fargate |
+| Task definition | `python-flask-app` (latest) |
+| Service name | `flask-service` |
+| Desired tasks | 2 |
+| VPC | Same as ALB |
+| Subnets | Same public subnets as ALB |
+| Security group | `flask-ecs-task-sg` |
+| Public IP | **Enabled** |
+| Load balancer | `flask-app-alb` |
+| Listener | HTTPS:443 |
+| Target group | `flask-tg-blue` |
+| Container | `python-flask-app : 8080` |
+
+---
+
+### Step 7: Verify Application
+
+```bash
+# Check target health
+aws elbv2 describe-target-health --region us-west-2 \
+  --target-group-arn <flask-tg-blue-arn> \
+  --query "TargetHealthDescriptions[].{IP:Target.Id,State:TargetHealth.State}" --output table
+
+# Test
+curl -k https://<ALB-DNS-name>
+```
+
+---
+
+## Phase 8: Create CI/CD Pipeline (Console)
+
+### Step 1: Create CodeBuild Project
+
+| Setting | Value |
+|---------|-------|
+| Name | `flask-app-build` |
+| Source | CodeCommit → `python-flask-app` → `main` |
+| Environment | Ubuntu, Standard, Latest image |
+| **Privileged** | ✅ Enable (required for Docker) |
+| Service role | `CodeBuildServiceRole` |
+| Buildspec | Use file in source |
+
+### Step 2: Create CodePipeline
+
+#### Source Stage
+
+| Setting | Value |
+|---------|-------|
+| Provider | AWS CodeCommit |
+| Repository | `python-flask-app` |
+| Branch | `main` |
+| Change detection | CloudWatch Events |
+
+#### Build Stage
+
+| Setting | Value |
+|---------|-------|
+| Provider | AWS CodeBuild |
+| Project | `flask-app-build` |
+
+#### Deploy Stage
+
+| Setting | Value |
+|---------|-------|
+| Provider | Amazon ECS |
+| Cluster | `python-flask-cluster` |
+| Service | `flask-service` |
+| Image definitions file | `imagedefinitions.json` |
+
+---
+
+## Phase 9: Test End-to-End
+
+Push a code change — pipeline triggers automatically:
+
+```bash
+cd ~/python-flask-app
+sed -i 's/Version: 1.0/Version: 2.0/' templates/index.html
+git add .
+git commit -m "Update to version 2.0"
+git push origin main
+```
+
+Watch CodePipeline:
+1. ✅ Source → Pulls from CodeCommit
+2. ✅ Build → Builds Docker image, pushes to ECR
+3. ✅ Deploy → Updates ECS service with new image
+
+Refresh browser — page shows "Version: 2.0" ✅
+
+---
+
+## Traffic Flow
+
+```
+Browser (HTTPS:443)
+    ↓
+ALB (TLS termination — uses ACM cert)
+    ↓
+Target Group (HTTP:8080)
+    ↓
+ECS Fargate Container (Flask on port 8080)
+    ↓
+Response back to browser
+```
+
+---
+
+## Common Mistakes to Avoid
+
+| Mistake | Consequence | Correct Setting |
+|---------|-------------|-----------------|
+| Target group protocol: HTTPS | 504 timeout | Use **HTTP** |
+| Target group port: 443 | ALB sends to wrong port | Use **8080** |
+| Health check protocol: HTTPS | Targets always unhealthy | Use **HTTP** |
+| Certificate without FQDN | ALB rejects cert | Use `app.example.com` format |
+| CodeBuild without Privileged | Docker build fails | Enable Privileged ✅ |
+| Image definitions typo | Deploy fails | `imagedefinitions.json` (exact spelling) |
+| ECS tasks without public IP | Tasks can't pull images | Enable public IP |
+
+---
+
+## Cleanup (Delete All Resources)
+
+```bash
+# Delete pipeline
+aws codepipeline delete-pipeline --name flask-app-pipeline --region us-west-2
+
+# Delete CodeBuild project
+aws codebuild delete-project --name flask-app-build --region us-west-2
+
+# Delete ECS service
+aws ecs update-service --cluster python-flask-cluster --service flask-service --desired-count 0 --region us-west-2
+aws ecs delete-service --cluster python-flask-cluster --service flask-service --force --region us-west-2
+
+# Delete ECS cluster
+aws ecs delete-cluster --cluster python-flask-cluster --region us-west-2
+
+# Delete ALB, target groups, listeners (via console or CLI)
+# Delete security groups
+# Delete ECR repository
+aws ecr delete-repository --repository-name python-flask-app --force --region us-west-2
+
+# Delete CodeCommit repo
+aws codecommit delete-repository --repository-name python-flask-app --region us-west-2
+
+# Delete IAM roles (detach policies first)
+# Delete ACM certificate
+# Delete CloudWatch log group
+aws logs delete-log-group --log-group-name /ecs/python-flask-app --region us-west-2
+```
