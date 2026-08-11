@@ -1,0 +1,132 @@
+issues 
+1) On trying to load the flask app page using alb dns name, it doesnt load
+
+troubleshooting :
+
+# 1. Check if tasks are healthy
+aws ecs describe-services --cluster python-flask-cluster --services flask-service --region us-west-2 \
+  --query "services[].{Status:status,Running:runningCount,Desired:desiredCount}" --output json
+
+# 2. Check target group health
+aws elbv2 describe-target-health --region us-west-2 \
+  --target-group-arn $(aws elbv2 describe-target-groups --region us-west-2 --names flask-tg-blue --query "TargetGroups[0].TargetGroupArn" --output text)
+
+Saw - 504 Gateway Time-out, Targets are unhealthy, ALB can't reach the containers on port 8080.
+
+# 3. Test from EC2
+curl -k https://flask-app-alb-350405504.us-west-2.elb.amazonaws.com
+
+ALB 504 Gateway Timeout — Root Cause & Fix
+Problem
+Application deployed on ECS Fargate, containers running and healthy, but ALB returned 504 Gateway Time-out when accessed in the browser.
+
+How We Troubleshot
+Step 1: Checked ECS Service Status
+
+aws ecs describe-services --cluster python-flask-cluster --services flask-service --region us-west-2 \
+  --query "services[].{Status:status,Running:runningCount,Desired:desiredCount}" --output json
+Result: Service active, tasks running ✅
+
+Step 2: Checked Target Group Health
+
+aws elbv2 describe-target-health --region us-west-2 --target-group-arn <tg-arn>
+Result: Targets showing unhealthy with Target.Timeout
+
+Step 3: Verified Containers Directly from EC2
+
+curl -s -o /dev/null -w "%{http_code}" http://172.31.25.232:8080/health
+Result: 200 — containers respond fine when accessed directly ✅
+
+Step 4: Checked Security Groups
+ALB SG outbound → All traffic ✅
+ECS Task SG inbound → Port 8080 from ALB SG ✅
+ECS Task SG outbound → All traffic ✅
+Step 5: Checked Target Group Configuration
+
+aws elbv2 describe-target-groups --region us-west-2 --names flask-tg-blue \
+  --query "TargetGroups[].{HealthCheckProtocol:HealthCheckProtocol,Protocol:Protocol,Port:Port}"
+Result:
+
+
+{
+    "HealthCheckProtocol": "HTTPS",
+    "Protocol": "HTTPS",
+    "Port": 443
+}
+Found the root cause!
+
+Root Cause
+The target group flask-tg-blue was created with:
+
+Protocol: HTTPS
+Port: 443
+But the container only serves:
+
+Protocol: HTTP
+Port: 8080
+The ALB was trying to forward traffic via HTTPS to a container that only understands HTTP. The container couldn't respond to the HTTPS handshake → timeout → 504.
+
+How We Fixed It
+Step 1: Changed Health Check to HTTP (Partial Fix)
+
+aws elbv2 modify-target-group --region us-west-2 \
+  --target-group-arn <tg-arn> \
+  --health-check-protocol HTTP \
+  --health-check-path /health \
+  --health-check-port 8080
+Result: Targets became "healthy" (health checks worked) but ALB still returned 504 because the forwarding protocol was still HTTPS.
+
+Step 2: Created New Target Group with HTTP:8080
+
+aws elbv2 create-target-group --region us-west-2 \
+  --name flask-tg-blue-http \
+  --protocol HTTP \
+  --port 8080 \
+  --vpc-id vpc-0d005c51180164271 \
+  --target-type ip \
+  --health-check-protocol HTTP \
+  --health-check-path /health \
+  --health-check-port 8080
+Step 3: Updated HTTPS:443 Listener to Forward to New Target Group
+
+LISTENER_ARN=$(aws elbv2 describe-listeners --region us-west-2 \
+  --load-balancer-arn <alb-arn> \
+  --query "Listeners[?Port==\`443\`].ListenerArn" --output text)
+
+aws elbv2 modify-listener --region us-west-2 \
+  --listener-arn $LISTENER_ARN \
+  --default-actions Type=forward,TargetGroupArn=<new-http-tg-arn>
+Step 4: Registered Task IPs in New Target Group
+
+aws elbv2 register-targets --region us-west-2 \
+  --target-group-arn <new-http-tg-arn> \
+  --targets Id=172.31.45.246,Port=8080 Id=172.31.24.155,Port=8080
+Result: Application Accessible ✅
+
+ISSUE 2 :
+Pipeline build stage failure :
+
+Failure 1: Deploy Stage — Image Definitions File Not Found
+Error:
+
+
+Did not find the image definition file imagedefinations.json in the input artifacts ZIP file
+Cause: Typo in the pipeline configuration — imagedefinations.json instead of imagedefinitions.json
+
+Fix: Edited the Deploy stage in CodePipeline → Changed filename to imagedefinitions.json (correct spelling)
+
+Failure 2: Deploy Stage — Target Group Not Associated with Load Balancer
+Error:
+
+
+The target group with targetGroupArn arn:aws:elasticloadbalancing:us-west-2:307946644949:targetgroup/flask-tg-blue/7675b66ad15ff8c4 does not have an associated load balancer
+Cause: The ECS service was still using the old flask-tg-blue (HTTPS:443 protocol) target group, but we had switched the ALB listener to the new flask-tg-blue-http (HTTP:8080) target group. The old TG was no longer attached to any listener.
+
+Fix:
+
+Deleted the old ECS service
+Deleted the stuck CloudFormation stack:
+
+aws cloudformation delete-stack --stack-name ECS-Console-V2-Service-flask-service-python-flask-cluster-a6ad372b --region us-west-2
+Recreated the ECS service pointing to flask-tg-blue-http
+Re-ran the pipeline → Deploy succeeded ✅
