@@ -1,0 +1,29 @@
+{
+  "family": "python-flask-app",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::307946644949:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "python-flask-app",
+      "image": "307946644949.dkr.ecr.us-west-2.amazonaws.com/python-flask-app:initial",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/python-flask-app",
+          "awslogs-region": "us-west-2",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
